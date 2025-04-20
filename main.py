@@ -1,10 +1,38 @@
 import os
 from dotenv import load_dotenv
-import telegram
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
 load_dotenv()
+TOKEN = os.getenv("TG_TOKEN")
 
-TELEGRAM_TOKEN = os.getenv('TG_TOKEN')
-CHAT_ID = os.getenv('TG_CHAT_ID')
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("Найти рецепт🔍", callback_data='search')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
 
-bot = telegram.Bot(token=TELEGRAM_TOKEN)
+    await update.message.reply_text(
+        "Добро пожаловать в Treat's Searcher!\n"
+        "Бот для интеллектуального поиска лучших рецептов 🥵\n"
+        "Что ты хочешь сделать?😊",
+        reply_markup=reply_markup
+    )
+
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == 'search':
+        await query.edit_message_text(text="Напиши название блюда или ингредиент 🍽")
+
+def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+    
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_callback))
+
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
