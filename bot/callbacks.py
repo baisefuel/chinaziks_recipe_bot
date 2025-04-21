@@ -24,11 +24,24 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text("Выбери язык поиска:", reply_markup=reply_markup)
 
+    if query.data == "lang_en":
+        context.user_data["lang"] = "en"
+    elif query.data == "lang_ru":
+        context.user_data["lang"] = "ru"
+
     if query.data in ['lang_ru', 'lang_en']:
         keyboard = [
             [InlineKeyboardButton("Найти по названию блюда 🍽", callback_data='search_by_name')],
-            [InlineKeyboardButton("Найти по ингредиенту 🍗", callback_data='search_by_igredients')],
+            [InlineKeyboardButton("Найти по ингредиенту 🍗", callback_data='search_by_ingredients')],
             [InlineKeyboardButton("Назад ⏪", callback_data='back')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(text="Как ты хочешь найти рецепт?", reply_markup=reply_markup)
+
+    if query.data == 'search_by_name':
+        context.user_data["mode"] = "name"
+        await query.edit_message_text("Введи название блюда для поиска:")
+
+    if query.data == 'search_by_ingredients':
+        context.user_data["mode"] = "ingredients"
+        await query.edit_message_text("Введи ингредиенты через запятую для поиска:")
