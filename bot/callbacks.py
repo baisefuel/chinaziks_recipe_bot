@@ -67,3 +67,5 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text("Как ты хочешь найти рецепт?", reply_markup=reply_markup)
 
+    if query.data == "noop":
+        return

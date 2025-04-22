@@ -39,7 +39,11 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
     page = user_data.get("page", 1)
 
     if not search_text or not mode or not language:
-        await update.message.reply_text("Что-то пошло не так, начни сначала через /start.")
+        keyboard = [
+            [InlineKeyboardButton("⏪ Назад", callback_data="back_to_mode")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("Что-то пошло не так, начни сначала!", reply_markup=reply_markup)
         return
 
     if language == "ru":
@@ -66,7 +70,11 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
     results = cursor.fetchall()
 
     if not results:
-        await update.message.reply_text(f'К сожалению, рецепты с запросом "{search_text}" не найдены. Проверьте правильность написания вашего запроса или воспользуйтесь поиском по ингредиентам.')
+        keyboard = [
+            [InlineKeyboardButton("⏪ Назад", callback_data="back_to_mode")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(f'К сожалению, рецепты с запросом "{search_text}" не найдены. Проверьте правильность написания вашего запроса или попробуйте другой вариант поиска.', reply_markup=reply_markup)
         return
 
     message_parts = []
@@ -76,24 +84,29 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
     message_text =f'Отлично! Вот рецепты, которые я нашел по запросу "{search_text}":\n'
     message_text += "\n".join(message_parts)
 
-    recipe_buttons = [
-        InlineKeyboardButton(str(i+1 + current_page), callback_data=f"select_{row[0]}")
-        for i, row in enumerate(results)
-    ]
+    pagination_row = []
 
-    nav_buttons = []
     if page > 1:
-        nav_buttons.append(InlineKeyboardButton("⬅️ Предыдущая страница", callback_data="prev_page"))
+        pagination_row.append(InlineKeyboardButton("⬅️", callback_data="prev_page"))
+    else:
+        pagination_row.append(InlineKeyboardButton(" ", callback_data="noop"))
+
+    for i, row in enumerate(results):
+        recipe_index = i + 1 + current_page
+        pagination_row.append(
+            InlineKeyboardButton(str(recipe_index), callback_data=f"select_{row[0]}")
+        )
+
     if len(results) == RECIPES_PER_PAGE:
-        nav_buttons.append(InlineKeyboardButton("➡️ Следующая страница", callback_data="next_page"))
+        pagination_row.append(InlineKeyboardButton("➡️", callback_data="next_page"))
+    else:
+        pagination_row.append(InlineKeyboardButton(" ", callback_data="noop"))
 
     keyboard = [
-        recipe_buttons,
+        pagination_row,
+        [InlineKeyboardButton("⏪ Назад", callback_data="back_to_mode")],
+        [InlineKeyboardButton("🔙Вернуться в меню", callback_data="back")]
     ]
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-    keyboard.append([InlineKeyboardButton("🔙 Назад", callback_data="back_to_mode")])
-    keyboard.append([InlineKeyboardButton("Вернуться в меню", callback_data="back")])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
