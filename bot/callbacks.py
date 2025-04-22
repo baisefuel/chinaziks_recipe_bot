@@ -1,6 +1,8 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 
+from search import search
+
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -40,8 +42,28 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data == 'search_by_name':
         context.user_data["mode"] = "name"
-        await query.edit_message_text("Введи название блюда для поиска:")
+        await query.edit_message_text('✍️ Введите название блюда или его часть:\nНапример: "борщ", "пирожки", "салат"')
 
     if query.data == 'search_by_ingredients':
         context.user_data["mode"] = "ingredients"
-        await query.edit_message_text("Введи ингредиенты через запятую для поиска:")
+        await query.edit_message_text('✍️ Введите ингредиенты через запятую:\nНапример: "картофель, морковь, лук"')
+
+    if query.data == 'next_page':
+        context.user_data["page"] += 1
+        await search(update, context, is_callback=True)
+
+    if query.data == 'prev_page':
+        context.user_data["page"] -= 1
+        await search(update, context, is_callback=True)
+
+    if query.data == 'back_to_mode':
+        context.user_data.pop("search_text", None)
+        context.user_data.pop("page", None)
+        keyboard = [
+            [InlineKeyboardButton("Найти по названию блюда 🍽", callback_data='search_by_name')],
+            [InlineKeyboardButton("Найти по ингредиенту 🍗", callback_data='search_by_ingredients')],
+            [InlineKeyboardButton("Назад ⏪", callback_data='back')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text("Как ты хочешь найти рецепт?", reply_markup=reply_markup)
+
