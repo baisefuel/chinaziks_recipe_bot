@@ -1,71 +1,182 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
+from search import search, translate_to_ru, translate_to_en
+import ast
 
-from search import search
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    if query.data == 'back':
-        keyboard = [
-            [InlineKeyboardButton("Найти рецепт🔍", callback_data='search')],
-        ]
+    data = query.data
+    lang = context.user_data.get("lang", "en")
+
+    def maybe_translate(text):
+        return translate_to_ru(text) if lang == "ru" else text
+
+    def format_steps(text):
+        try:
+            parsed = ast.literal_eval(text)
+            if isinstance(parsed, list):
+                cleaned_steps = [step.strip().strip('"').strip("'") for step in parsed]
+                return "\n".join([f"{i+1}. {step}" for i, step in enumerate(cleaned_steps)])
+            return text
+        except:
+            return text
+
+    if data == 'back':
+        keyboard = [[InlineKeyboardButton("Найти рецепт🔍", callback_data='search')]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text("Добро пожаловать в Treat's Searcher! 👨🏾‍🦯\n"
-        "Бот для интеллектуального поиска лучших рецептов 🥵\n"
-        "Что ты хочешь сделать? 😊", reply_markup=reply_markup)
+        await query.edit_message_text(
+            "Добро пожаловать в Treat's Searcher! 👨🏾‍🦯\n"
+            "Бот для интеллектуального поиска лучших рецептов 🥵\n"
+            "Что ты хочешь сделать? 😊",
+            reply_markup=reply_markup
+        )
 
-
-    if query.data == 'search':
+    elif data == 'search':
         keyboard = [
             [InlineKeyboardButton("ru", callback_data='lang_ru')],
             [InlineKeyboardButton("en", callback_data='lang_en')],
             [InlineKeyboardButton("Назад ⏪", callback_data='back')]
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text("Выбери язык поиска:", reply_markup=reply_markup)
+        await query.edit_message_text("Выбери язык поиска:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    if query.data == "lang_en":
-        context.user_data["lang"] = "en"
-    elif query.data == "lang_ru":
-        context.user_data["lang"] = "ru"
-
-    if query.data in ['lang_ru', 'lang_en']:
+    elif data in ['lang_ru', 'lang_en']:
+        context.user_data["lang"] = 'ru' if data == 'lang_ru' else 'en'
         keyboard = [
             [InlineKeyboardButton("Найти по названию блюда 🍽", callback_data='search_by_name')],
             [InlineKeyboardButton("Найти по ингредиенту 🍗", callback_data='search_by_ingredients')],
             [InlineKeyboardButton("Назад ⏪", callback_data='back')]
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(text="Как ты хочешь найти рецепт?", reply_markup=reply_markup)
+        await query.edit_message_text("Как ты хочешь найти рецепт?", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    if query.data == 'search_by_name':
+    elif data == 'search_by_name':
         context.user_data["mode"] = "name"
-        await query.edit_message_text('✍️ Введите название блюда или его часть:\nНапример: "борщ", "пирожки", "салат"')
+        await query.edit_message_text("✍️ Введите название блюда или его часть:")
 
-    if query.data == 'search_by_ingredients':
+    elif data == 'search_by_ingredients':
         context.user_data["mode"] = "ingredients"
-        await query.edit_message_text('✍️ Введите ингредиенты через запятую:\nНапример: "картофель, морковь, лук"')
+        await query.edit_message_text("✍️ Введите ингредиенты через запятую:")
 
-    if query.data == 'next_page':
+    elif data == 'next_page':
         context.user_data["page"] += 1
         await search(update, context, is_callback=True)
 
-    if query.data == 'prev_page':
+    elif data == 'prev_page':
         context.user_data["page"] -= 1
         await search(update, context, is_callback=True)
 
-    if query.data == 'back_to_mode':
+    elif data == 'back_to_mode':
         context.user_data.pop("search_text", None)
         context.user_data.pop("page", None)
+        context.user_data.pop("selected_recipe_id", None)
         keyboard = [
             [InlineKeyboardButton("Найти по названию блюда 🍽", callback_data='search_by_name')],
             [InlineKeyboardButton("Найти по ингредиенту 🍗", callback_data='search_by_ingredients')],
             [InlineKeyboardButton("Назад ⏪", callback_data='back')]
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text("Как ты хочешь найти рецепт?", reply_markup=reply_markup)
+        await query.edit_message_text("Как ты хочешь найти рецепт?", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    if query.data == "noop":
+    elif data == 'noop':
         return
+
+    elif data.startswith("select_"):
+        recipe_id = int(data.split("_")[1])
+        context.user_data["selected_recipe_id"] = recipe_id
+
+        cursor = context.bot_data["db_conn"].cursor()
+        cursor.execute("SELECT name FROM recipes WHERE id = %s", (recipe_id,))
+        row = cursor.fetchone()
+        recipe_name = maybe_translate(row[0]) if row else "Неизвестный рецепт"
+
+        keyboard = [
+            [InlineKeyboardButton("🥕 Ингредиенты", callback_data="recipe_ingredients")],
+            [InlineKeyboardButton("🧾 Сырые ингредиенты", callback_data="recipe_ingredients_raw")],
+            [InlineKeyboardButton("📖 Шаги приготовления", callback_data="recipe_steps")],
+            [InlineKeyboardButton("🍽 Порции", callback_data="recipe_servings")],
+            [InlineKeyboardButton("📏 Размер порции", callback_data="recipe_serving_size")],
+            [InlineKeyboardButton("ℹ️ Полная информация", callback_data="recipe_full")],
+            [InlineKeyboardButton("🔙 Назад к результатам", callback_data="back_to_results")],
+        ]
+        await query.edit_message_text(
+            f'Вы выбрали рецепт: "{recipe_name}"\nЧто вы хотите узнать?',
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif data.startswith("recipe_"):
+        recipe_id = context.user_data.get("selected_recipe_id")
+        if not recipe_id:
+            await query.edit_message_text("Сначала выбери рецепт.")
+            return
+
+        cursor = context.bot_data["db_conn"].cursor()
+
+        if data == "recipe_ingredients":
+            cursor.execute("SELECT ingredients FROM recipes WHERE id = %s", (recipe_id,))
+            ingredients = cursor.fetchone()[0]
+            clean_ingredients = ingredients.strip("[] ").replace("'", "").replace('"', '')
+            translated = maybe_translate(clean_ingredients)
+            keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{recipe_id}")]]
+            await query.edit_message_text(f"🥕 Ингредиенты:\n{translated}", reply_markup=InlineKeyboardMarkup(keyboard))
+
+        elif data == "recipe_ingredients_raw":
+            cursor.execute("SELECT ingredients_raw FROM recipes WHERE id = %s", (recipe_id,))
+            raw = cursor.fetchone()[0]
+            translated = maybe_translate(raw)
+            keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{recipe_id}")]]
+            await query.edit_message_text(f"🧾 Сырые ингредиенты:\n{translated}", reply_markup=InlineKeyboardMarkup(keyboard))
+
+        elif data == "recipe_steps":
+            cursor.execute("SELECT steps FROM recipes WHERE id = %s", (recipe_id,))
+            steps = cursor.fetchone()[0]
+            translated = maybe_translate(steps)
+            formatted = format_steps(translated)
+            keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{recipe_id}")]]
+            await query.edit_message_text(f"📖 Шаги приготовления:\n{formatted}", reply_markup=InlineKeyboardMarkup(keyboard))
+
+        elif data == "recipe_servings":
+            cursor.execute("SELECT servings FROM recipes WHERE id = %s", (recipe_id,))
+            servings = cursor.fetchone()[0]
+            keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{recipe_id}")]]
+            await query.edit_message_text(f"🍽 Порции: {servings}", reply_markup=InlineKeyboardMarkup(keyboard))
+
+        elif data == "recipe_serving_size":
+            cursor.execute("SELECT serving_size FROM recipes WHERE id = %s", (recipe_id,))
+            size = cursor.fetchone()[0]
+            keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{recipe_id}")]]
+            await query.edit_message_text(f"📏 Размер порции: {size}", reply_markup=InlineKeyboardMarkup(keyboard))
+
+        elif data == "recipe_full":
+            cursor.execute("""
+                SELECT name, ingredients, ingredients_raw, steps, servings, serving_size, created_by 
+                FROM recipes WHERE id = %s
+            """, (recipe_id,))
+            row = cursor.fetchone()
+            if not row:
+                await query.edit_message_text("Информация о рецепте недоступна.")
+                return
+
+            name, ingredients, raw, steps, servings, size, creator = row
+            creator_info = creator if creator else "Создатель неизвестен (данные из датасета)"
+
+            clean_ingredients = ingredients.strip("[] ").replace("'", "").replace('"', '')
+            translated_name = maybe_translate(name)
+            translated_ingredients = maybe_translate(clean_ingredients)
+            translated_raw = maybe_translate(raw)
+            translated_steps = format_steps(maybe_translate(steps))
+
+            full_info = (
+                f"📛 Название: {translated_name}\n"
+                f"🥕 Ингредиенты: {translated_ingredients}\n"
+                f"🧾 Сырые ингредиенты: {translated_raw}\n"
+                f"📖 Шаги приготовления:\n{translated_steps}\n"
+                f"🍽 Порции: {servings}\n"
+                f"📏 Размер порции: {size}\n"
+                f"👨‍🍳 {creator_info}"
+            )
+            keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{recipe_id}")]]
+            await query.edit_message_text(full_info, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif data == "back_to_results":
+        await search(update, context, is_callback=True)
