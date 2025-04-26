@@ -4,7 +4,8 @@ from telegram.ext import ContextTypes
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("Найти рецепт🔍", callback_data='search')]
+        [InlineKeyboardButton("Найти рецепт🔍", callback_data='search')],
+        [InlineKeyboardButton("Добавить рецепт➕", callback_data='add_recipe')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 

@@ -19,6 +19,9 @@ def translate_to_ru(text: str) -> str:
 RECIPES_PER_PAGE = 5
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if "add_recipe" in context.user_data:
+        return
+
     user_text = update.message.text
     mode = context.user_data.get("mode")
 
@@ -70,7 +73,8 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
         )
         return
 
-    context.user_data["search_results"] = {str(i + 1 + current_page): row[0] for i, row in enumerate(results)}
+    recipe_ids = [row[0] for row in results]
+    context.user_data["search_results"] = recipe_ids
 
     message_lines = []
     for i, row in enumerate(results):
@@ -125,9 +129,9 @@ async def show_recipe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, r
     text = f'Вы выбрали рецепт: "{name}"\nЧто вы хотите узнать?'
     keyboard = [
         [InlineKeyboardButton("📝 Ингредиенты", callback_data="recipe_ingredients")],
-        [InlineKeyboardButton("📋 Ингредиенты (сырые)", callback_data="recipe_ingredients_raw")],
+        [InlineKeyboardButton("📋 Грамовки", callback_data="recipe_ingredients_raw")],
         [InlineKeyboardButton("📖 Шаги", callback_data="recipe_steps")],
-        [InlineKeyboardButton("🍽 Порции", callback_data="recipe_servings")],
+        [InlineKeyboardButton("🍽 Количество порций", callback_data="recipe_servings")],
         [InlineKeyboardButton("⚖️ Размер порции", callback_data="recipe_serving_size")],
         [InlineKeyboardButton("ℹ️ Подробная информация", callback_data="recipe_full")],
         [InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_results")]
@@ -194,7 +198,7 @@ async def show_recipe_full(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"""📌 <b>{name}</b>
     📝 <b>Ингредиенты:</b> {ingredients_list}
     📖 <b>Шаги:</b>\n{steps_list}
-    🍽 <b>Порции:</b> {servings or "?"}
+    🍽 <b>Количество порций:</b> {servings or "?"}
     ⚖️ <b>Размер порции:</b> {serving_size or "?"}
     👨‍🍳 <b>Создатель:</b> {creator}
     """

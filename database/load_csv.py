@@ -28,6 +28,7 @@ cursor.execute("""
         servings FLOAT,
         serving_size TEXT,
         created_by TEXT DEFAULT NULL
+        lang VARCHAR(5)
     );
 """)
 
