@@ -1,6 +1,6 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
-from add_recipe import start_add_recipe
+from add_recipe import save_recipe, start_add_recipe
 from search import search, translate_to_ru
 import ast
 
@@ -59,6 +59,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("Найти по названию блюда 🍽", callback_data='search_by_name')],
             [InlineKeyboardButton("Найти по ингредиенту 🍗", callback_data='search_by_ingredients')],
+            [InlineKeyboardButton("Найти пользовательские рецепты", callback_data='search_user_recipes')],
             [InlineKeyboardButton("Назад ⏪", callback_data='back')]
         ]
         await query.edit_message_text("Как ты хочешь найти рецепт?", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -70,6 +71,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'search_by_ingredients':
         context.user_data["mode"] = "ingredients"
         await query.edit_message_text("✍️ Введите ингредиенты через запятую:")
+
+    elif data == 'search_user_recipes':
+        context.user_data["mode"] = "user_recipes"
+        context.user_data["search_text"] = "Пользовательские рецепты"
+        context.user_data["page"] = 1
+        await search(update, context, is_callback=True)
 
     elif data == 'next_page':
         context.user_data["page"] += 1
@@ -86,6 +93,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [
             [InlineKeyboardButton("Найти по названию блюда 🍽", callback_data='search_by_name')],
             [InlineKeyboardButton("Найти по ингредиенту 🍗", callback_data='search_by_ingredients')],
+            [InlineKeyboardButton("Найти пользовательские рецепты", callback_data='search_user_recipes')],
             [InlineKeyboardButton("Назад ⏪", callback_data='back')]
         ]
         await query.edit_message_text("Как ты хочешь найти рецепт?", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -209,3 +217,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     elif data == 'add_recipe':
         await start_add_recipe(update, context)
+    
+    elif data == "lang_ru_add":
+        context.user_data["add_recipe"]["lang"] = "ru"
+        await save_recipe(update, context)
+
+    elif data == "lang_en_add":
+        context.user_data["add_recipe"]["lang"] = "en"
+        await save_recipe(update, context)

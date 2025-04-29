@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
 async def start_add_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -34,12 +34,20 @@ async def handle_add_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚖️ Какой размер одной порции?")
     elif "serving_size" not in recipe_data:
         recipe_data["serving_size"] = text
-        await save_recipe(update, context)
+
+        keyboard = [
+            [InlineKeyboardButton("ru", callback_data="lang_ru_add")],
+            [InlineKeyboardButton("en", callback_data="lang_en_add")]
+        ]
+        
+        await update.message.reply_text(
+            "На каком языке рецепт?",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 async def save_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db_conn = context.bot_data["db_conn"]
     recipe_data = context.user_data["add_recipe"]
-    lang = context.user_data.get("lang", "en")
 
     name = recipe_data["name"]
     ingredients = recipe_data["ingredients"]
@@ -47,18 +55,30 @@ async def save_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     steps = recipe_data["steps"]
     servings = recipe_data["servings"]
     serving_size = recipe_data["serving_size"]
-    created_by = update.effective_user.first_name or "Пользователь"
+    lang = recipe_data.get("lang", "en")
+
+    created_by = update.effective_user.username or "Пользователь"
+    if created_by:
+        created_by = f"@{created_by}"
+    else:
+        created_by = None
 
     cursor = db_conn.cursor()
     cursor.execute("""
         INSERT INTO recipes (name, ingredients, ingredients_raw, steps, servings, serving_size, created_by, lang)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
     """, (
-        name, ingredients, ingredients_raw, steps, servings, serving_size, created_by,
-        "ru" if lang == "ru" else None
+        name, ingredients, ingredients_raw, steps, servings, serving_size, created_by, lang
     ))
     db_conn.commit()
 
-    await update.message.reply_text("✅ Рецепт успешно добавлен! Спасибо!")
+    keyboard = [
+        [InlineKeyboardButton("Назад ⏪", callback_data='back')]
+    ]
+
+    if update.message:
+        await update.message.reply_text("✅ Рецепт успешно добавлен! Спасибо!", reply_markup=InlineKeyboardMarkup(keyboard))
+    elif update.callback_query:
+        await update.callback_query.message.reply_text("✅ Рецепт успешно добавлен! Спасибо!", reply_markup=InlineKeyboardMarkup(keyboard))
 
     context.user_data.pop("add_recipe", None)

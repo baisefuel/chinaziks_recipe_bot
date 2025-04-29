@@ -7,7 +7,7 @@ db.drop(['description', 'tags', 'id'], axis=1, inplace=True)
 
 db.where(pd.notnull(db),None)
 
-db['lang'] = None
+db['lang'] = "en"
 
 db['created_by'] = None
 

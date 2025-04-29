@@ -3,6 +3,10 @@ from dotenv import load_dotenv
 from translatepy import Translator
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
+from telegram.error import BadRequest
+
+
+from add_recipe import handle_add_recipe
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
 if os.path.exists(dotenv_path):
@@ -20,6 +24,7 @@ RECIPES_PER_PAGE = 5
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "add_recipe" in context.user_data:
+        await handle_add_recipe(update, context)
         return
 
     user_text = update.message.text
@@ -46,21 +51,50 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
         await update.message.reply_text("Что-то пошло не так, начни сначала!", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    query = translate_to_en(search_text) if language == "ru" else search_text
+    query_en = translate_to_en(search_text)
+    query_ru = search_text
     current_page = (page - 1) * RECIPES_PER_PAGE
 
     cursor = db_conn.cursor()
+    
     if mode == 'name':
-        cursor.execute(
-            "SELECT id, name FROM recipes WHERE LOWER(name) LIKE %s ORDER BY id LIMIT %s OFFSET %s",
-            (f"%{query.lower()}%", RECIPES_PER_PAGE, current_page)
-        )
+        sql = """
+            SELECT id, name FROM recipes
+            WHERE LOWER(name) LIKE %s OR LOWER(name) LIKE %s OR LOWER(name) = LOWER(%s) OR LOWER(name) = LOWER(%s)
+            ORDER BY id
+            LIMIT %s OFFSET %s
+        """
+        params = (f"%{query_ru.lower()}%", f"%{query_en.lower()}%", f"%{query_ru.lower()}%", f"%{query_en.lower()}%", RECIPES_PER_PAGE, current_page)
+        cursor.execute(sql, params)
+
     elif mode == 'ingredients':
-        ingredients = [word.strip().lower() for word in query.split(',')]
-        sql = "SELECT id, name FROM recipes WHERE " + " AND ".join(
-            ["LOWER(ingredients_raw) LIKE %s" for _ in ingredients]
-        ) + " ORDER BY id LIMIT %s OFFSET %s"
-        params = [f"%{ingredient}%" for ingredient in ingredients] + [RECIPES_PER_PAGE, current_page]
+        ingredients_en = [word.strip().lower() for word in query_en.split(',')]
+        ingredients_ru = [word.strip().lower() for word in query_ru.split(',')]
+
+        conditions = []
+        params = []
+        for ing_ru, ing_en in zip(ingredients_ru, ingredients_en):
+            conditions.append("(LOWER(ingredients) LIKE %s OR LOWER(ingredients) LIKE %s)")
+            params.append(f"%{ing_ru}%")
+            params.append(f"%{ing_en}%")
+        
+        sql = f"""
+            SELECT id, name FROM recipes
+            WHERE {" AND ".join(conditions)}
+            ORDER BY id
+            LIMIT %s OFFSET %s
+        """
+        params.extend([RECIPES_PER_PAGE, current_page])
+        cursor.execute(sql, params)
+
+    elif mode == "user_recipes":
+        sql = """
+            SELECT id, name FROM recipes
+            WHERE created_by IS NOT NULL
+            ORDER BY id DESC
+            LIMIT %s OFFSET %s
+        """
+        params = (RECIPES_PER_PAGE, current_page)
         cursor.execute(sql, params)
 
     results = cursor.fetchall()
@@ -78,8 +112,10 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
 
     message_lines = []
     for i, row in enumerate(results):
-        name = translate_to_ru(row[1]) if language == "ru" else row[1]
-        message_lines.append(f"{i + 1 + current_page}. {name}")
+        recipe_name = row[1]
+        if language == "ru":
+            recipe_name = translate_to_ru(recipe_name)
+        message_lines.append(f"{i + 1 + current_page}. {recipe_name}")
 
     message_text = f'Вот рецепты по запросу "{search_text}":\n' + "\n".join(message_lines)
 
@@ -106,101 +142,13 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    if is_callback:
-        await update.callback_query.edit_message_text(message_text, reply_markup=reply_markup)
-    else:
-        await update.message.reply_text(message_text, reply_markup=reply_markup)
-
-async def show_recipe_menu(update: Update, context: ContextTypes.DEFAULT_TYPE, recipe_id: int):
-    db_conn = context.bot_data["db_conn"]
-    language = context.user_data.get("lang")
-
-    cursor = db_conn.cursor()
-    cursor.execute("SELECT name FROM recipes WHERE id = %s", (recipe_id,))
-    row = cursor.fetchone()
-
-    if not row:
-        await update.callback_query.edit_message_text("Рецепт не найден.")
-        return
-
-    name = translate_to_ru(row[0]) if language == "ru" else row[0]
-    context.user_data["selected_recipe_id"] = recipe_id
-
-    text = f'Вы выбрали рецепт: "{name}"\nЧто вы хотите узнать?'
-    keyboard = [
-        [InlineKeyboardButton("📝 Ингредиенты", callback_data="recipe_ingredients")],
-        [InlineKeyboardButton("📋 Грамовки", callback_data="recipe_ingredients_raw")],
-        [InlineKeyboardButton("📖 Шаги", callback_data="recipe_steps")],
-        [InlineKeyboardButton("🍽 Количество порций", callback_data="recipe_servings")],
-        [InlineKeyboardButton("⚖️ Размер порции", callback_data="recipe_serving_size")],
-        [InlineKeyboardButton("ℹ️ Подробная информация", callback_data="recipe_full")],
-        [InlineKeyboardButton("🔙 Назад к списку", callback_data="back_to_results")]
-    ]
-    await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def show_recipe_field(update: Update, context: ContextTypes.DEFAULT_TYPE, field: str):
-    db_conn = context.bot_data["db_conn"]
-    recipe_id = context.user_data.get("selected_recipe_id")
-    language = context.user_data.get("lang")
-
-    cursor = db_conn.cursor()
-    cursor.execute(f"SELECT {field} FROM recipes WHERE id = %s", (recipe_id,))
-    row = cursor.fetchone()
-
-    if not row or not row[0]:
-        text = "Информация отсутствует."
-    else:
-        value = row[0]
-        if language == "ru":
-            value = translate_to_ru(value)
-
-        if field == "steps":
-            lines = value.split('\n')
-            value = "\n".join(f"{i+1}. {line.strip()}" for i, line in enumerate(lines) if line.strip())
-        elif field in ["ingredients", "ingredients_raw"]:
-            value = ", ".join([item.strip() for item in value.split(',') if item.strip()])
-
-        text = f"{field.replace('_', ' ').capitalize()}:\n{value}"
-
-    keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data="back_to_recipe")]]
-    await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def show_recipe_full(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    db_conn = context.bot_data["db_conn"]
-    recipe_id = context.user_data.get("selected_recipe_id")
-    language = context.user_data.get("lang")
-
-    cursor = db_conn.cursor()
-    cursor.execute(
-        "SELECT name, ingredients, steps, servings, serving_size, created_by FROM recipes WHERE id = %s",
-        (recipe_id,)
-    )
-    row = cursor.fetchone()
-
-    if not row:
-        await update.callback_query.edit_message_text("Рецепт не найден.")
-        return
-
-    name, ingredients, steps, servings, serving_size, created_by = row
-
-    if language == "ru":
-        name = translate_to_ru(name)
-        ingredients = translate_to_ru(ingredients)
-        steps = translate_to_ru(steps)
-        created_by = translate_to_ru(created_by)
-
-    steps_list = "\n".join(f"{i+1}. {s.strip()}" for i, s in enumerate((steps or "").split('\n')) if s.strip())
-    ingredients_list = ", ".join([i.strip() for i in (ingredients or "").split(',') if i.strip()])
-
-    creator = created_by if created_by else "Источник неизвестен 🤷‍♂️ (Взято из датасета)"
-
-    name = translate_to_ru(row[0]) if language == "ru" else row[0]
-    text = f"""📌 <b>{name}</b>
-    📝 <b>Ингредиенты:</b> {ingredients_list}
-    📖 <b>Шаги:</b>\n{steps_list}
-    🍽 <b>Количество порций:</b> {servings or "?"}
-    ⚖️ <b>Размер порции:</b> {serving_size or "?"}
-    👨‍🍳 <b>Создатель:</b> {creator}
-    """
-    keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data="back_to_recipe")]]
-    await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    try:
+        if is_callback:
+            await update.callback_query.edit_message_text(message_text, reply_markup=reply_markup)
+        else:
+            await update.message.reply_text(message_text, reply_markup=reply_markup)
+    except BadRequest as e:
+        if "Message is not modified" in str(e):
+            pass
+        else:
+            raise
