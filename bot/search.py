@@ -102,7 +102,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
     if not results:
         keyboard = [[InlineKeyboardButton("⏪ Назад", callback_data="back_to_mode")]]
         await update.message.reply_text(
-            f'К сожалению, рецепты по запросу "{search_text}" не найдены.',
+            f'К сожалению, рецепты по запросу "{search_text}" не найдены.\nПроверьте правильность написания вашего запроса или попробуйте другой вариант поиска.',
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return

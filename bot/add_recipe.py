@@ -5,9 +5,9 @@ async def start_add_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["add_recipe"] = {}
 
     if update.message:
-        await update.message.reply_text("✍️ Введите название блюда:")
+        await update.message.reply_text("✍️ Начнем с названия блюда. Например: «Овощное рагу» или «Chicken soup»")
     elif update.callback_query:
-        await update.callback_query.message.reply_text("✍️ Введите название блюда:")
+        await update.callback_query.message.reply_text("✍️ Начнем с названия блюда. Например: «Овощное рагу» или «Chicken soup»:")
 
 async def handle_add_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "add_recipe" not in context.user_data:
@@ -19,19 +19,23 @@ async def handle_add_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if "name" not in recipe_data:
         recipe_data["name"] = text
-        await update.message.reply_text("🥕 Теперь введите ингредиенты через запятую:")
+        await update.message.reply_text("📋 Отлично! Теперь введите список ингредиентов через запятую. Например: «картошка, морковь, лук» или «potatoes, carrots, onions».")
     elif "ingredients" not in recipe_data:
         recipe_data["ingredients"] = text
-        await update.message.reply_text("📋 Теперь введите грамовки через запятую (или напишите 'нет'):")
+        await update.message.reply_text("⚖️ Спасибо! Теперь укажите количество каждого ингредиента с нужными единицами измерения через запятую. Например: «картошка 500 г, соль 1 щепотка, подсолнечное масло 2 ст. л.».")
     elif "ingredients_raw" not in recipe_data:
         recipe_data["ingredients_raw"] = text if text.lower() != "нет" else ""
-        await update.message.reply_text("📖 Теперь напишите пошаговую инструкцию (каждый шаг с новой строки):")
+        await update.message.reply_text('👨‍🍳 Далее опишите пошагово, как приготовить это блюдо. Вы можете писать короткими предложениями или пунктами.\n' \
+        'Например:\n' \
+        '"«1. Очистить и нарезать все овощи.\n"' \
+        '"2. Варить говядину 1,5 часа на небольшом огне.\n"' \
+        '"3. Добавить овощи и варить еще 10 минут»"')
     elif "steps" not in recipe_data:
         recipe_data["steps"] = text
-        await update.message.reply_text("🍽 Сколько порций получается?")
+        await update.message.reply_text("🍽 Укажите, сколько порций получается из этого рецепта? Введите целое натуральное число, например: «4».")
     elif "servings" not in recipe_data:
         recipe_data["servings"] = text
-        await update.message.reply_text("⚖️ Какой размер одной порции?")
+        await update.message.reply_text('🍽 Укажите размер одной порции, например, в граммах: "250 г".')
     elif "serving_size" not in recipe_data:
         recipe_data["serving_size"] = text
 
@@ -41,7 +45,7 @@ async def handle_add_recipe(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         
         await update.message.reply_text(
-            "На каком языке рецепт?",
+            "🌎 Выберите язык рецепта:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 

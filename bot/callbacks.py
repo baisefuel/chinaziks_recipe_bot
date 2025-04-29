@@ -66,11 +66,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == 'search_by_name':
         context.user_data["mode"] = "name"
-        await query.edit_message_text("✍️ Введите название блюда или его часть:")
+        await query.edit_message_text('✍️ Введите название блюда или его часть:\nНапример: "борщ", "пирожки", "салат"')
 
     elif data == 'search_by_ingredients':
         context.user_data["mode"] = "ingredients"
-        await query.edit_message_text("✍️ Введите ингредиенты через запятую:")
+        await query.edit_message_text('✍️ Введите ингредиенты через запятую:\nНапример: "картофель, морковь, лук"')
 
     elif data == 'search_user_recipes':
         context.user_data["mode"] = "user_recipes"
@@ -123,7 +123,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         keyboard = [
             [InlineKeyboardButton("🥕 Ингредиенты", callback_data="recipe_ingredients")],
-            [InlineKeyboardButton("🧾 Грамовки", callback_data="recipe_ingredients_raw")],
+            [InlineKeyboardButton("🧾 Граммовки", callback_data="recipe_ingredients_raw")],
             [InlineKeyboardButton("📖 Шаги приготовления", callback_data="recipe_steps")],
             [InlineKeyboardButton("🍽 Порции", callback_data="recipe_servings")],
             [InlineKeyboardButton("📏 Размер порции", callback_data="recipe_serving_size")],
@@ -159,7 +159,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cleaned = clean_list_text(raw)
             translated = maybe_translate(cleaned)
             keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
-            await query.edit_message_text(f"🧾 Грамовки:\n{translated}", reply_markup=InlineKeyboardMarkup(keyboard))
+            await query.edit_message_text(f"🧾 Граммовки:\n{translated}", reply_markup=InlineKeyboardMarkup(keyboard))
 
         elif data == "recipe_steps":
             cursor.execute("SELECT steps FROM recipes WHERE id = %s", (recipe_id,))
@@ -203,7 +203,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             full_info = (
                 f"📛 Название: {translated_name}\n"
                 f"🥕 Ингредиенты: {translated_ingredients}\n"
-                f"🧾 Грамовки: {translated_raw}\n"
+                f"🧾 Граммовки: {translated_raw}\n"
                 f"📖 Шаги приготовления:\n{translated_steps}\n"
                 f"🍽 Порции: {servings}\n"
                 f"📏 Размер порции: {size}\n"
