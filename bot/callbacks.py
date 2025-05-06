@@ -78,6 +78,15 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["page"] = 1
         await search(update, context, is_callback=True)
 
+    elif data == "enter_servings_filter":
+        await query.edit_message_text("Введите желаемое количество порций:")
+        context.user_data["awaiting_servings_input"] = True
+
+    elif data == "remove_servings_filter":
+        context.user_data.pop("servings_filter", None)
+        context.user_data["page"] = 1
+        await search(update, context, is_callback=True)
+
     elif data == 'next_page':
         context.user_data["page"] += 1
         await search(update, context, is_callback=True)

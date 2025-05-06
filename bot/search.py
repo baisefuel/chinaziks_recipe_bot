@@ -5,7 +5,6 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
 from telegram.error import BadRequest
 
-
 from add_recipe import handle_add_recipe
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
@@ -27,6 +26,17 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_add_recipe(update, context)
         return
 
+    if context.user_data.get("awaiting_servings_input"):
+        servings_input = update.message.text.strip()
+        if servings_input.isdigit() and int(servings_input) > 0:
+            context.user_data["servings_filter"] = int(servings_input)
+            context.user_data.pop("awaiting_servings_input")
+            context.user_data["page"] = 1
+            await search(update, context)
+        else:
+            await update.message.reply_text("Пожалуйста, введите корректное число (целое и больше нуля).")
+        return
+
     user_text = update.message.text
     mode = context.user_data.get("mode")
 
@@ -45,6 +55,8 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
     mode = user_data.get("mode")
     search_text = user_data.get("search_text")
     page = user_data.get("page", 1)
+    
+    servings_filter = user_data.get("servings_filter")
 
     if not search_text or not mode or not language:
         keyboard = [[InlineKeyboardButton("⏪ Назад", callback_data="back_to_mode")]]
@@ -60,11 +72,16 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
     if mode == 'name':
         sql = """
             SELECT id, name FROM recipes
-            WHERE LOWER(name) LIKE %s OR LOWER(name) LIKE %s OR LOWER(name) = LOWER(%s) OR LOWER(name) = LOWER(%s)
-            ORDER BY id
-            LIMIT %s OFFSET %s
+            WHERE (LOWER(name) LIKE %s OR LOWER(name) LIKE %s OR LOWER(name) = LOWER(%s) OR LOWER(name) = LOWER(%s))
         """
-        params = (f"%{query_ru.lower()}%", f"%{query_en.lower()}%", f"%{query_ru.lower()}%", f"%{query_en.lower()}%", RECIPES_PER_PAGE, current_page)
+        params = [f"%{query_ru.lower()}%", f"%{query_en.lower()}%", f"%{query_ru.lower()}%", f"%{query_en.lower()}%"]
+
+        if servings_filter:
+            sql += " AND servings = %s"
+            params.append(servings_filter)
+
+        sql += " ORDER BY id LIMIT %s OFFSET %s"
+        params.extend([RECIPES_PER_PAGE, current_page])
         cursor.execute(sql, params)
 
     elif mode == 'ingredients':
@@ -77,13 +94,16 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
             conditions.append("(LOWER(ingredients) LIKE %s OR LOWER(ingredients) LIKE %s)")
             params.append(f"%{ing_ru}%")
             params.append(f"%{ing_en}%")
-        
+
         sql = f"""
             SELECT id, name FROM recipes
             WHERE {" AND ".join(conditions)}
-            ORDER BY id
-            LIMIT %s OFFSET %s
         """
+        if servings_filter:
+            sql += " AND servings = %s"
+            params.append(servings_filter)
+
+        sql += " ORDER BY id LIMIT %s OFFSET %s"
         params.extend([RECIPES_PER_PAGE, current_page])
         cursor.execute(sql, params)
 
@@ -91,10 +111,15 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
         sql = """
             SELECT id, name FROM recipes
             WHERE created_by IS NOT NULL
-            ORDER BY id DESC
-            LIMIT %s OFFSET %s
         """
-        params = (RECIPES_PER_PAGE, current_page)
+        params = []
+
+        if servings_filter:
+            sql += " AND servings = %s"
+            params.append(servings_filter)
+
+        sql += " ORDER BY id DESC LIMIT %s OFFSET %s"
+        params.extend([RECIPES_PER_PAGE, current_page])
         cursor.execute(sql, params)
 
     results = cursor.fetchall()
@@ -134,8 +159,14 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
     else:
         pagination_row.append(InlineKeyboardButton(" ", callback_data="noop"))
 
+    if context.user_data.get("servings_filter"):
+        filter_button = InlineKeyboardButton("Убрать фильтр по порциям", callback_data="remove_servings_filter")
+    else:
+        filter_button = InlineKeyboardButton("Ввести количество порций", callback_data="enter_servings_filter")
+
     keyboard = [
         pagination_row,
+        [filter_button],
         [InlineKeyboardButton("⏪ Назад", callback_data="back_to_mode")],
         [InlineKeyboardButton("🔙 Меню", callback_data="back")]
     ]
