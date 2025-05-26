@@ -19,10 +19,10 @@ cursor.execute("""
         id SERIAL PRIMARY KEY,
         recipe_id INTEGER NOT NULL,
         user_id BIGINT NOT NULL,
-        username TEXT,
         rating INTEGER CHECK (rating >= 1 AND rating <= 5),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE
+        FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
+        UNIQUE (recipe_id, user_id)
     );
 """)
 

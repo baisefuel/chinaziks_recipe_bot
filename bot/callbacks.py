@@ -220,8 +220,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🍽 Порции", callback_data="recipe_servings")],
             [InlineKeyboardButton("📏 Размер порции", callback_data="recipe_serving_size")],
             [InlineKeyboardButton("ℹ️ Полная информация", callback_data="recipe_full")],
-            [InlineKeyboardButton("💬 Оставить комментарий", callback_data=f"comment_{recipe_id}")],
-            [InlineKeyboardButton("💬 Посмотреть комментарии", callback_data=f"view_comments_{recipe_id}")],
+            [
+                InlineKeyboardButton("Поставить/изменить ⭐️", callback_data=f"rate_recipe_{recipe_id}"),
+                InlineKeyboardButton("Посмотреть среднюю ⭐️", callback_data=f"view_rating_{recipe_id}")
+            ],
+            [
+                InlineKeyboardButton("Оставить 💬", callback_data=f"comment_{recipe_id}"),
+                InlineKeyboardButton("Посмотреть 💬", callback_data=f"view_comments_{recipe_id}")
+            ],
             [InlineKeyboardButton("🔙 Назад к результатам", callback_data="back_to_results")],
         ]
         await query.edit_message_text(
@@ -325,6 +331,25 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["comments_recipe_id"] = recipe_id
         context.user_data["comments_page"] = 0
         await comment_page(update, context)
+    
+    elif data.startswith("rate_recipe_"):
+        recipe_id = int(data.split("_")[-1])
+        context.user_data["rating_recipe_id"] = recipe_id
+        context.user_data["awaiting_rating"] = True
+        await query.message.reply_text("Поставьте оценку от 1 до 5:")
+
+    elif data.startswith("view_rating_"):
+        selected_index = context.user_data.get("selected_index", 0)
+        recipe_id = int(data.split("_")[-1])
+        cursor = context.bot_data["db_conn"].cursor()
+        cursor.execute("SELECT AVG(rating), COUNT(*) FROM ratings WHERE recipe_id = %s", (recipe_id,))
+        avg, count = cursor.fetchone()
+        keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
+
+        if count == 0:
+            await query.edit_message_text("Оценок пока нет для этого рецепта.", reply_markup=InlineKeyboardMarkup(keyboard))
+        else:
+            await query.edit_message_text(f"Средняя оценка: ⭐ {round(avg, 2)} (на основе {count} оценок)", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def comment_entry_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -340,3 +365,34 @@ async def comment_entry_handler(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data["awaiting_comment"] = True
 
     await query.message.reply_text("Напиши комментарий к рецепту:")
+
+async def handle_rating_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.user_data.get("awaiting_rating"):
+        return
+
+    user_input = update.message.text.strip()
+    if not user_input.isdigit() or not (1 <= int(user_input) <= 5):
+        await update.message.reply_text("Пожалуйста, введите число от 1 до 5.")
+        return
+
+    rating = int(user_input)
+    recipe_id = context.user_data.get("rating_recipe_id")
+    user_id = update.message.from_user.id
+    selected_index = context.user_data.get("selected_index", 0)
+
+    conn = context.bot_data["db_conn"]
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT INTO ratings (recipe_id, user_id, rating)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (recipe_id, user_id)
+        DO UPDATE SET rating = EXCLUDED.rating, created_at = CURRENT_TIMESTAMP
+    """, (recipe_id, user_id, rating))
+    conn.commit()
+
+    context.user_data.pop("awaiting_rating", None)
+    context.user_data.pop("rating_recipe_id", None)
+    keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
+
+    await update.message.reply_text("Спасибо за вашу оценку! ⭐", reply_markup=InlineKeyboardMarkup(keyboard))

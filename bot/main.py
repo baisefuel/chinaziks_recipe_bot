@@ -4,7 +4,7 @@ import psycopg2
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 from search import handle_text
 from start import start
-from callbacks import button_callback, comment_entry_handler, comment_pagination_handler, show_comments
+from callbacks import button_callback, comment_entry_handler, comment_pagination_handler, handle_rating_input, show_comments
 from telegram.ext import MessageHandler, filters
 
 
@@ -32,7 +32,14 @@ app.add_handler(CallbackQueryHandler(comment_entry_handler, pattern=r"^comment_\
 app.add_handler(CallbackQueryHandler(show_comments, pattern=r"^view_comments_\d+$"))
 app.add_handler(CallbackQueryHandler(comment_pagination_handler, pattern=r"^comment_(prev|next)$"))
 app.add_handler(CallbackQueryHandler(button_callback))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+
+async def message_router(update, context):
+    if context.user_data.get("awaiting_rating"):
+        await handle_rating_input(update, context)
+    else:
+        await handle_text(update, context)
+
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_router))
 
 app.run_polling()
 
