@@ -4,7 +4,7 @@ import psycopg2
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler
 from search import handle_text
 from start import start
-from callbacks import button_callback
+from callbacks import button_callback, comment_entry_handler, comment_pagination_handler, show_comments
 from telegram.ext import MessageHandler, filters
 
 
@@ -28,6 +28,9 @@ app = Application.builder().token(TOKEN).build()
 app.bot_data["db_conn"] = connection
 
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CallbackQueryHandler(comment_entry_handler, pattern=r"^comment_\d+$"))
+app.add_handler(CallbackQueryHandler(show_comments, pattern=r"^view_comments_\d+$"))
+app.add_handler(CallbackQueryHandler(comment_pagination_handler, pattern=r"^comment_(prev|next)$"))
 app.add_handler(CallbackQueryHandler(button_callback))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 

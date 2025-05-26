@@ -1,9 +1,92 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import ContextTypes
+from telegram.ext import ContextTypes, CallbackQueryHandler
 from add_recipe import save_recipe, start_add_recipe
 from search import search, translate_to_ru
 import ast
 
+COMMENTS_PER_PAGE = 1
+
+async def show_comments(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    recipe_id = int(query.data.split("_")[-1])
+    context.user_data["comments_recipe_id"] = recipe_id
+    context.user_data["comments_page"] = 0
+
+    await comment_page(update, context)
+
+async def comment_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    recipe_id = context.user_data.get("comments_recipe_id")
+    page = context.user_data.get("comments_page", 0)
+
+    conn = context.bot_data["db_conn"]
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT comment, username, created_at
+        FROM comments
+        WHERE recipe_id = %s
+        ORDER BY created_at ASC
+    """, (recipe_id,))
+    comments = cursor.fetchall()
+
+    if not comments:
+        await update.callback_query.edit_message_text("Нет комментариев к этому рецепту.")
+        return
+
+    total = len(comments)
+    page = max(0, min(page, total - 1))
+
+    text, username, created_at = comments[page]
+    formatted = (
+        f'Комментарии к рецепту "{get_recipe_title(recipe_id, cursor, context.user_data.get("lang", "en"))}"\n\n'
+        f'Комментарий:\n{text}\n\n'
+        f'Пользователь: {username or "Аноним"}\n'
+        f'Дата: {created_at.strftime("%d/%m/%Y")}'
+    )
+
+    pagination_row = []
+    if page > 0:
+        pagination_row.append(InlineKeyboardButton("⬅️", callback_data="comment_prev"))
+    else:
+        pagination_row.append(InlineKeyboardButton(" ", callback_data="noop"))
+
+    if page < total - 1:
+        pagination_row.append(InlineKeyboardButton("➡️", callback_data="comment_next"))
+    else:
+        pagination_row.append(InlineKeyboardButton(" ", callback_data="noop"))
+
+    selected_index = context.user_data.get("selected_index", 0)
+
+    keyboard = [
+        pagination_row,
+        [InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")],
+        [InlineKeyboardButton("🏠 В меню", callback_data="back")]
+    ]
+    await update.callback_query.edit_message_text(text=formatted, reply_markup=InlineKeyboardMarkup(keyboard))
+
+def get_recipe_title(recipe_id, cursor, user_lang="en"):
+    cursor.execute("SELECT name FROM recipes WHERE id = %s", (recipe_id,))
+    row = cursor.fetchone()
+    if not row:
+        return "Название недоступно"
+
+    name = row[0]
+    return translate_to_ru(name) if user_lang == "ru" else name
+
+async def comment_pagination_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    data = query.data
+
+    page = context.user_data.get("comments_page", 0)
+
+    if data == "comment_prev":
+        page -= 1
+    elif data == "comment_next":
+        page += 1
+
+    context.user_data["comments_page"] = page
+    await comment_page(update, context)
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -137,6 +220,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🍽 Порции", callback_data="recipe_servings")],
             [InlineKeyboardButton("📏 Размер порции", callback_data="recipe_serving_size")],
             [InlineKeyboardButton("ℹ️ Полная информация", callback_data="recipe_full")],
+            [InlineKeyboardButton("💬 Оставить комментарий", callback_data=f"comment_{recipe_id}")],
+            [InlineKeyboardButton("💬 Посмотреть комментарии", callback_data=f"view_comments_{recipe_id}")],
             [InlineKeyboardButton("🔙 Назад к результатам", callback_data="back_to_results")],
         ]
         await query.edit_message_text(
@@ -234,3 +319,24 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "lang_en_add":
         context.user_data["add_recipe"]["lang"] = "en"
         await save_recipe(update, context)
+
+    elif data.startswith("view_comments_"):
+        recipe_id = int(data.replace("view_comments_", ""))
+        context.user_data["comments_recipe_id"] = recipe_id
+        context.user_data["comments_page"] = 0
+        await comment_page(update, context)
+
+
+async def comment_entry_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data
+    if not data.startswith("comment_"):
+        return
+
+    recipe_id = int(data.replace("comment_", ""))
+    context.user_data["comment_recipe_id"] = recipe_id
+    context.user_data["awaiting_comment"] = True
+
+    await query.message.reply_text("Напиши комментарий к рецепту:")

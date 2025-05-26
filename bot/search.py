@@ -40,12 +40,48 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     mode = context.user_data.get("mode")
 
-    if mode in ["name", "ingredients"]:
+    if context.user_data.get("awaiting_comment"):
+        recipe_id = context.user_data.get("comment_recipe_id")
+        comment_text = update.message.text.strip()
+        user = update.effective_user
+        selected_index = context.user_data.get("selected_index", 0)
+
+        if not comment_text:
+            await update.message.reply_text("Комментарий не может быть пустым.")
+            return
+
+        db_conn = context.bot_data["db_conn"]
+        cursor = db_conn.cursor()
+        cursor.execute("""
+            INSERT INTO comments (recipe_id, user_id, username, comment)
+            VALUES (%s, %s, %s, %s)
+        """, (
+            recipe_id,
+            user.id,
+            f"@{user.username}" if user.username else "Аноним",
+            comment_text
+        ))
+        db_conn.commit()
+        cursor.close()
+
+        context.user_data.pop("awaiting_comment")
+        context.user_data.pop("comment_recipe_id")
+        
+        keyboard = [
+            [InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")],
+            [InlineKeyboardButton("⏪ Назад в меню", callback_data='back')]
+        ]
+
+        await update.message.reply_text("Комментарий успешно добавлен ✅", reply_markup=InlineKeyboardMarkup(keyboard))
+        return
+
+    elif mode in ["name", "ingredients"]:
         context.user_data["search_text"] = user_text
         context.user_data["page"] = 1
         await search(update, context)
     else:
         await update.message.reply_text("Сначала выбери режим поиска через кнопки!")
+
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback=False):
     user_data = context.user_data
