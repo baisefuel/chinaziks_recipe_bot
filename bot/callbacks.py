@@ -1,7 +1,7 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes, CallbackQueryHandler
 from add_recipe import save_recipe, start_add_recipe
-from search import search, translate_to_ru
+from search import RECIPES_PER_PAGE, search, translate_to_ru
 import ast
 
 COMMENTS_PER_PAGE = 1
@@ -19,6 +19,7 @@ async def show_comments(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def comment_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     recipe_id = context.user_data.get("comments_recipe_id")
     page = context.user_data.get("comments_page", 0)
+    selected_index = context.user_data.get("selected_index", 0)
 
     conn = context.bot_data["db_conn"]
     cursor = conn.cursor()
@@ -29,9 +30,10 @@ async def comment_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ORDER BY created_at ASC
     """, (recipe_id,))
     comments = cursor.fetchall()
+    keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
 
     if not comments:
-        await update.callback_query.edit_message_text("Нет комментариев к этому рецепту.")
+        await update.callback_query.edit_message_text("Нет комментариев к этому рецепту.", reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     total = len(comments)
@@ -198,8 +200,9 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(parts) != 2 or not parts[1].isdigit():
             return
 
-        selected_index = int(parts[1]) - 1
-        recipe_ids = context.user_data.get("search_results", [])
+        selected_index = int(parts[1]) - 1  # глобальный индекс
+
+        recipe_ids = context.user_data.get("full_search_results", [])
         if selected_index < 0 or selected_index >= len(recipe_ids):
             await query.edit_message_text("Что-то пошло не так. Начни заново /start")
             return
@@ -230,11 +233,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ],
             [InlineKeyboardButton("🔙 Назад к результатам", callback_data="back_to_results")],
         ]
+
         await query.edit_message_text(
             f'Вы выбрали рецепт: "{recipe_name}"\nЧто вы хотите узнать?',
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
-
     elif data.startswith("recipe_"):
         recipe_id = context.user_data.get("selected_recipe_id")
         selected_index = context.user_data.get("selected_index", 0)

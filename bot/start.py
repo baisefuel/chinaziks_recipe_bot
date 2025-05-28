@@ -3,6 +3,8 @@ from telegram.ext import ContextTypes
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
+    
     keyboard = [
         [InlineKeyboardButton("Найти рецепт🔍", callback_data='search')],
         [InlineKeyboardButton("Добавить рецепт➕", callback_data='add_recipe')],

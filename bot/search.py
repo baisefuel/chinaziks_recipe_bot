@@ -86,6 +86,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback=False):
     user_data = context.user_data
     db_conn = context.bot_data["db_conn"]
+    context.user_data.pop("full_search_results", None)
+
 
     language = user_data.get("lang")
     mode = user_data.get("mode")
@@ -169,7 +171,31 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
         return
 
     recipe_ids = [row[0] for row in results]
-    context.user_data["search_results"] = recipe_ids
+    if "full_search_results" not in context.user_data:
+        full_cursor = db_conn.cursor()
+
+        if mode == 'name':
+            full_sql = """
+                SELECT id FROM recipes
+                WHERE (LOWER(name) LIKE %s OR LOWER(name) LIKE %s OR LOWER(name) = LOWER(%s) OR LOWER(name) = LOWER(%s))
+            """
+            full_params = [f"%{query_ru.lower()}%", f"%{query_en.lower()}%", f"%{query_ru.lower()}%", f"%{query_en.lower()}%"]
+            if servings_filter:
+                full_sql += " AND servings = %s"
+                full_params.append(servings_filter)
+
+            full_sql += " ORDER BY id"
+            full_cursor.execute(full_sql, full_params)
+
+        full_results = full_cursor.fetchall()
+        full_recipe_ids = [row[0] for row in full_results]
+        context.user_data["full_search_results"] = full_recipe_ids
+
+    all_recipe_ids = context.user_data["full_search_results"]
+    start = (page - 1) * RECIPES_PER_PAGE
+    end = start + RECIPES_PER_PAGE
+    current_page_ids = all_recipe_ids[start:end]
+    context.user_data["search_results"] = current_page_ids
 
     message_lines = []
     for i, row in enumerate(results):
