@@ -200,7 +200,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(parts) != 2 or not parts[1].isdigit():
             return
 
-        selected_index = int(parts[1]) - 1  # глобальный индекс
+        selected_index = int(parts[1]) - 1
 
         recipe_ids = context.user_data.get("full_search_results", [])
         if selected_index < 0 or selected_index >= len(recipe_ids):

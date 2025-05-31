@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from telegram import Update, CallbackQuery, Message, User, Chat
 from telegram.ext import CallbackContext
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from bot.callbacks import (
     show_comments,
