@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from translatepy import Translator
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Update
 from telegram.ext import ContextTypes
 from telegram.error import BadRequest
 
@@ -85,24 +85,39 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback=False):
     user_data = context.user_data
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     db_conn = context.bot_data["db_conn"]
     context.user_data.pop("full_search_results", None)
 
-
     language = user_data.get("lang")
     mode = user_data.get("mode")
-    search_text = user_data.get("search_text")
+    search_text = user_data.get("search_text", "Пользовательские рецепты")
     page = user_data.get("page", 1)
-    
     servings_filter = user_data.get("servings_filter")
+    query = update.callback_query if is_callback else None
 
-    if not search_text or not mode or not language:
+    if not mode or not language:
+        img_path = os.path.join(BASE_DIR, "..", "resources", "images", "error.jpg")
         keyboard = [[InlineKeyboardButton("⏪ Назад", callback_data="back_to_mode")]]
-        await update.message.reply_text("Что-то пошло не так, начни сначала!", reply_markup=InlineKeyboardMarkup(keyboard))
+        
+        if is_callback:
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=open(img_path, 'rb'),
+                    caption="Что-то пошло не так, начни сначала!"
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        else:
+            await update.message.reply_photo(
+                photo=open(img_path, 'rb'),
+                caption="Что-то пошло не так, начни сначала!",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         return
 
-    query_en = translate_to_en(search_text)
-    query_ru = search_text
+    query_en = translate_to_en(search_text) if mode != "user_recipes" else ""
+    query_ru = search_text if mode != "user_recipes" else "Пользовательские рецепты"
     current_page = (page - 1) * RECIPES_PER_PAGE
 
     cursor = db_conn.cursor()
@@ -164,10 +179,22 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
 
     if not results:
         keyboard = [[InlineKeyboardButton("⏪ Назад", callback_data="back_to_mode")]]
-        await update.message.reply_text(
-            f'К сожалению, рецепты по запросу "{search_text}" не найдены.\nПроверьте правильность написания вашего запроса или попробуйте другой вариант поиска.',
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
+        img_path = os.path.join(BASE_DIR, "..", "resources", "images", "search_recipes.png")
+        
+        if is_callback:
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=open(img_path, 'rb'),
+                    caption=f'К сожалению, рецепты по запросу "{search_text}" не найдены.'
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        else:
+            await update.message.reply_photo(
+                photo=open(img_path, 'rb'),
+                caption=f'К сожалению, рецепты по запросу "{search_text}" не найдены.',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         return
 
     recipe_ids = [row[0] for row in results]
@@ -185,6 +212,31 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
                 full_params.append(servings_filter)
 
             full_sql += " ORDER BY id"
+            full_cursor.execute(full_sql, full_params)
+
+        elif mode == 'ingredients':
+            full_sql = f"""
+                SELECT id FROM recipes
+                WHERE {" AND ".join(conditions)}
+            """
+            if servings_filter:
+                full_sql += " AND servings = %s"
+                params.append(servings_filter)
+
+            full_sql += " ORDER BY id"
+            full_cursor.execute(full_sql, params[:len(params)-2])
+
+        elif mode == "user_recipes":
+            full_sql = """
+                SELECT id FROM recipes
+                WHERE created_by IS NOT NULL
+            """
+            full_params = []
+            if servings_filter:
+                full_sql += " AND servings = %s"
+                full_params.append(servings_filter)
+
+            full_sql += " ORDER BY id DESC"
             full_cursor.execute(full_sql, full_params)
 
         full_results = full_cursor.fetchall()
@@ -236,10 +288,24 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE, is_callback
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     try:
+        img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+
         if is_callback:
-            await update.callback_query.edit_message_text(message_text, reply_markup=reply_markup)
+            with open(img_path, 'rb') as img:
+                await query.edit_message_media(
+                    media=InputMediaPhoto(
+                        media=img,
+                        caption=message_text
+                    ),
+                    reply_markup=reply_markup
+                )
         else:
-            await update.message.reply_text(message_text, reply_markup=reply_markup)
+            with open(img_path, 'rb') as img:
+                await update.message.reply_photo(
+                    photo=img,
+                    caption=message_text,
+                    reply_markup=reply_markup
+                )
     except BadRequest as e:
         if "Message is not modified" in str(e):
             pass

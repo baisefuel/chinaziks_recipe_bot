@@ -1,10 +1,13 @@
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+import os
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Update
 from telegram.ext import ContextTypes, CallbackQueryHandler
 from add_recipe import save_recipe, start_add_recipe
 from search import RECIPES_PER_PAGE, search, translate_to_ru
 import ast
 
 COMMENTS_PER_PAGE = 1
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 async def show_comments(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -21,6 +24,8 @@ async def comment_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     page = context.user_data.get("comments_page", 0)
     selected_index = context.user_data.get("selected_index", 0)
 
+    img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'comment.png')
+
     conn = context.bot_data["db_conn"]
     cursor = conn.cursor()
     cursor.execute("""
@@ -33,7 +38,12 @@ async def comment_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
 
     if not comments:
-        await update.callback_query.edit_message_text("Нет комментариев к этому рецепту.", reply_markup=InlineKeyboardMarkup(keyboard))
+        await update.callback_query.edit_message_media(
+            media=InputMediaPhoto(
+                media=open(img_path, 'rb'),
+                caption='Нет комментариев к этому рецепту!'
+            ),
+            reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     total = len(comments)
@@ -65,7 +75,14 @@ async def comment_page(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")],
         [InlineKeyboardButton("🏠 В меню", callback_data="back")]
     ]
-    await update.callback_query.edit_message_text(text=formatted, reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    await update.callback_query.edit_message_media(
+        media=InputMediaPhoto(
+            media=open(img_path, 'rb'),
+            caption=formatted
+        ),
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 def get_recipe_title(recipe_id, cursor, user_lang="en"):
     cursor.execute("SELECT name FROM recipes WHERE id = %s", (recipe_id,))
@@ -124,10 +141,16 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Добавить рецепт➕", callback_data='add_recipe')],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
-            "Добро пожаловать в Treat's Searcher! 👨🏾‍🦯\n"
-            "Бот для интеллектуального поиска лучших рецептов 🥵\n"
-            "Что ты хочешь сделать? 😊",
+
+        img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'hello.png')
+
+        await update.callback_query.edit_message_media(
+            media=InputMediaPhoto(
+                media=open(img_path, 'rb'),
+                caption="Добро пожаловать в Treat's Searcher! 👨🏾‍🦯\n"
+                "Бот для интеллектуального поиска лучших рецептов 🥵\n"
+                "Что ты хочешь сделать? 😊"
+            ),
             reply_markup=reply_markup
         )
 
@@ -137,7 +160,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("en", callback_data='lang_en')],
             [InlineKeyboardButton("Назад ⏪", callback_data='back')]
         ]
-        await query.edit_message_text("Выбери язык поиска:", reply_markup=InlineKeyboardMarkup(keyboard))
+        img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=open(img_path, 'rb'),
+                caption='Выбери язык поиска:'
+            ),
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     elif data in ['lang_ru', 'lang_en']:
         context.user_data["lang"] = 'ru' if data == 'lang_ru' else 'en'
@@ -147,15 +177,34 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Найти пользовательские рецепты", callback_data='search_user_recipes')],
             [InlineKeyboardButton("Назад ⏪", callback_data='back')]
         ]
-        await query.edit_message_text("Как ты хочешь найти рецепт?", reply_markup=InlineKeyboardMarkup(keyboard))
+        img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=open(img_path, 'rb'),
+                caption='Как ты хочешь найти рецепт?'
+            ),
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     elif data == 'search_by_name':
         context.user_data["mode"] = "name"
-        await query.edit_message_text('✍️ Введите название блюда или его часть:\nНапример: "борщ", "пирожки", "салат"')
+        img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=open(img_path, 'rb'),
+                caption='✍️ Введите название блюда или его часть:\nНапример: "борщ", "пирожки", "салат"'
+            )
+        )
 
     elif data == 'search_by_ingredients':
         context.user_data["mode"] = "ingredients"
-        await query.edit_message_text('✍️ Введите ингредиенты через запятую:\nНапример: "картофель, морковь, лук"')
+        img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=open(img_path, 'rb'),
+                caption='✍️ Введите ингредиенты через запятую:\nНапример: "картофель, морковь, лук"'
+            )
+        )
 
     elif data == 'search_user_recipes':
         context.user_data["mode"] = "user_recipes"
@@ -164,7 +213,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await search(update, context, is_callback=True)
 
     elif data == "enter_servings_filter":
-        await query.edit_message_text("Введите желаемое количество порций:")
+        img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=open(img_path, 'rb'),
+                caption='Введите желаемое количество порций:'
+            )
+        )
         context.user_data["awaiting_servings_input"] = True
 
     elif data == "remove_servings_filter":
@@ -190,7 +245,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Найти пользовательские рецепты", callback_data='search_user_recipes')],
             [InlineKeyboardButton("Назад ⏪", callback_data='back')]
         ]
-        await query.edit_message_text("Как ты хочешь найти рецепт?", reply_markup=InlineKeyboardMarkup(keyboard))
+        img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=open(img_path, 'rb'),
+                caption="Как ты хочешь найти рецепт?"
+            ),
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
     elif data == 'noop':
         return
@@ -204,7 +266,13 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         recipe_ids = context.user_data.get("full_search_results", [])
         if selected_index < 0 or selected_index >= len(recipe_ids):
-            await query.edit_message_text("Что-то пошло не так. Начни заново /start")
+            img_path = os.path.join(BASE_DIR, "..", "resources", "images", "error.jpg")
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=open(img_path, 'rb'),
+                    caption="Что-то пошло не так. Начни заново /start"
+                    )
+            )
             return
 
         recipe_id = recipe_ids[selected_index]
@@ -234,16 +302,26 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("🔙 Назад к результатам", callback_data="back_to_results")],
         ]
 
-        await query.edit_message_text(
-            f'Вы выбрали рецепт: "{recipe_name}"\nЧто вы хотите узнать?',
+        img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=open(img_path, 'rb'),
+                caption=f'Вы выбрали рецепт: "{recipe_name}"\nЧто вы хотите узнать?'
+            ),
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
+
     elif data.startswith("recipe_"):
         recipe_id = context.user_data.get("selected_recipe_id")
         selected_index = context.user_data.get("selected_index", 0)
 
         if not recipe_id:
-            await query.edit_message_text("Сначала выбери рецепт.")
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=open(img_path, 'rb'),
+                    caption="Что-то пошло не так. Начни заново /start"
+                    )
+            )            
             return
 
         cursor = context.bot_data["db_conn"].cursor()
@@ -254,7 +332,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cleaned = clean_list_text(ingredients)
             translated = maybe_translate(cleaned)
             keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
-            await query.edit_message_text(f"🥕 Ингредиенты:\n{translated}", reply_markup=InlineKeyboardMarkup(keyboard))
+            img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=open(img_path, 'rb'),
+                    caption=f"🥕 Ингредиенты:\n{translated}"
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
         elif data == "recipe_ingredients_raw":
             cursor.execute("SELECT ingredients_raw FROM recipes WHERE id = %s", (recipe_id,))
@@ -262,7 +347,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cleaned = clean_list_text(raw)
             translated = maybe_translate(cleaned)
             keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
-            await query.edit_message_text(f"🧾 Граммовки:\n{translated}", reply_markup=InlineKeyboardMarkup(keyboard))
+            img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=open(img_path, 'rb'),
+                    caption=f"🧾 Граммовки:\n{translated}"
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
         elif data == "recipe_steps":
             cursor.execute("SELECT steps FROM recipes WHERE id = %s", (recipe_id,))
@@ -271,19 +363,40 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             translated = maybe_translate(cleaned)
             formatted = format_steps(translated)
             keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
-            await query.edit_message_text(f"📖 Шаги приготовления:\n{formatted}", reply_markup=InlineKeyboardMarkup(keyboard))
+            img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=open(img_path, 'rb'),
+                    caption=f"📖 Шаги приготовления:\n{formatted}"
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
         elif data == "recipe_servings":
             cursor.execute("SELECT servings FROM recipes WHERE id = %s", (recipe_id,))
             servings = cursor.fetchone()[0]
             keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
-            await query.edit_message_text(f"🍽 Порции: {servings}", reply_markup=InlineKeyboardMarkup(keyboard))
+            img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=open(img_path, 'rb'),
+                    caption=f"🍽 Порции: {servings}"
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
         elif data == "recipe_serving_size":
             cursor.execute("SELECT serving_size FROM recipes WHERE id = %s", (recipe_id,))
             size = cursor.fetchone()[0]
             keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
-            await query.edit_message_text(f"📏 Размер порции: {size}", reply_markup=InlineKeyboardMarkup(keyboard))
+            img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=open(img_path, 'rb'),
+                    caption=f"📏 Размер порции: {size}"
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
         elif data == "recipe_full":
             cursor.execute("""
@@ -292,7 +405,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             """, (recipe_id,))
             row = cursor.fetchone()
             if not row:
-                await query.edit_message_text("Информация о рецепте недоступна.")
+                await query.edit_message_media(
+                    media=InputMediaPhoto(
+                        media=open(img_path, 'rb'),
+                        caption="Что-то пошло не так. Начни заново /start"
+                        )
+                )
                 return
 
             name, ingredients, raw, steps, servings, size, creator = row
@@ -313,7 +431,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"👨‍🍳 {creator_info}"
             )
             keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
-            await query.edit_message_text(full_info, reply_markup=InlineKeyboardMarkup(keyboard))
+            img_path = os.path.join(BASE_DIR, '..', 'resources', 'images', 'search_recipes.png')
+            await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=open(img_path, 'rb'),
+                    caption=full_info
+                ),
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
 
     elif data == "back_to_results":
         await search(update, context, is_callback=True)
@@ -349,11 +474,20 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         avg, count = cursor.fetchone()
         keyboard = [[InlineKeyboardButton("🔙 Назад к рецепту", callback_data=f"select_{selected_index + 1}")]]
 
-        if count == 0:
-            await query.edit_message_text("Оценок пока нет для этого рецепта.", reply_markup=InlineKeyboardMarkup(keyboard))
-        else:
-            await query.edit_message_text(f"Средняя оценка: ⭐ {round(avg, 2)} (на основе {count} оценок)", reply_markup=InlineKeyboardMarkup(keyboard))
+        img_path = os.path.join(BASE_DIR, "..", "resources", "images", "rating.png")
 
+        if count == 0:
+            caption = "Оценок пока нет для этого рецепта."
+        else:
+            caption = f"Средняя оценка: ⭐ {round(avg, 2)} (на основе {count} оценок)"
+
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=open(img_path, 'rb'),
+                caption=caption
+            ),
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
 
 async def comment_entry_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
